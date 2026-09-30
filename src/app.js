@@ -24,4 +24,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+const apiRoutes = require('./routes/api');
+app.use('/api', apiRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found' });
+});
+
 module.exports = app;

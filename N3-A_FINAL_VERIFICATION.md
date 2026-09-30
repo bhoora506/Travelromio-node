@@ -7,7 +7,10 @@
 **Laravel Sanctum (Personal Access Tokens)**. The Node.js application seamlessly extracts the ID and token from the `Bearer {id}|{plainTextToken}` header, performs constant-time SHA-256 cryptographic verification against the `personal_access_tokens` table, validates token status (type/expiration), and resolves the safe user identity. 
 
 ## 3. Laravel Reference
-Laravel issues plain-text tokens using Sanctum and stores the SHA-256 hash in `personal_access_tokens.token`. Protected routes use the `auth:sanctum` middleware, verifying the Bearer token and returning `{"message": "Unauthenticated."}` (HTTP 401) on failure. 
+Laravel issues plain-text tokens using Sanctum and stores the SHA-256 hash in `personal_access_tokens.token`. 
+**Actual Sanctum Source Verification (`vendor/laravel/sanctum/src/PersonalAccessToken.php`):**
+Sanctum's `findToken()` splits the token via explode on `|`. It looks up the token by ID and utilizes `hash_equals()` against `hash('sha256', $token)`. Node's `crypto.timingSafeEqual` over a `crypto.createHash('sha256')` strictly mimics this.
+Protected routes use the `auth:sanctum` middleware, verifying the Bearer token and returning `{"message": "Unauthenticated."}` (HTTP 401) on failure.
 
 ## 4. Flutter Contract
 Flutter reads the locally stored Sanctum token and attaches `Authorization: Bearer <token>`. The `ApiClient` intercepts HTTP `401` errors and throws an `UnauthorizedException`.
@@ -64,9 +67,11 @@ MySQL was completely untouched. The implementation relies entirely on read-only 
 
 ## 14. Laravel Findings
 **No confirmed Laravel defect was found in the audited authentication path.** The Sanctum token model is standard and safely decoupled.
+- *Finding*: `vendor/laravel/sanctum/src/PersonalAccessToken.php` executes a full table scan `where('token', hash('sha256', $token))` if the token omits the `|` delimiter.
 
 ## 15. Intentional Node Improvements
-- **INTENTIONAL NODE IMPROVEMENT**: Node omits the modification of the `last_used_at` tracker in the `personal_access_tokens` table. This conforms to strict "No Database Modification" rules for this migration phase, while maintaining 100% downstream API behavioral compatibility. 
+- **INTENTIONAL NODE MIGRATION-PHASE DEVIATION**: Node omits the modification of the `last_used_at` tracker in the `personal_access_tokens` table. This conforms to strict "No Database Modification" rules for this migration phase, while maintaining 100% downstream API behavioral compatibility. 
+- **INTENTIONAL NODE IMPROVEMENT**: Node intentionally omits the legacy fallback for pipeless tokens, enforcing `{id}|{plainTextToken}` strictly. This protects the backend against full-table scan DoS risks.
 
 ## 16. Remaining Risks
 None related to authentication.

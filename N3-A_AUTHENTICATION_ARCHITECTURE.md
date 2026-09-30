@@ -50,9 +50,10 @@ Any failure yields a deterministic `401 Unauthorized` without exposing inner DB 
 - `500 Internal Server Error`: Only thrown if a network partition with MySQL occurs.
 
 ## 10. Security Decisions
-- **No Token Modification**: To adhere strictly to N3-A read-only DB requirements, the Node implementation **does not update** the `last_used_at` timestamp.
-- **Constant Time Hash Checks**: Uses Node's native `timingSafeEqual` to avoid timing side-channel attacks during hash validation.
+- **No Token Modification**: To adhere strictly to N3-A read-only DB requirements, the Node implementation **does not update** the `last_used_at` timestamp. This is explicitly documented as an **INTENTIONAL NODE MIGRATION-PHASE DEVIATION**.
+- **Constant Time Hash Checks**: Uses Node's native `timingSafeEqual` to avoid timing side-channel attacks during hash validation (mirroring Laravel's `hash_equals`).
 - **Strict Buffer Checks**: Buffer length validation occurs before comparison to prevent buffer overflow/mismatch exceptions in Node's crypto library.
+- **Strict Token Format**: Node.js intentionally rejects older Sanctum pipeless tokens, enforcing the more secure and performant `{id}|{hash}` fast-lookup pattern. This avoids full table scans (`where token = hash`) used by Laravel as a fallback.
 
 ## 11. Token Lifecycle
 Tokens are issued by Laravel upon login and stored in MySQL. They are revoked by Laravel upon logout. Node.js purely consumes (verifies) them statelessly.
@@ -72,7 +73,8 @@ Node.js inherently supports Laravel's token revocation. If Laravel deletes a row
 (All operations performed as `SELECT` read-only).
 
 ## 16. Intentional Node Improvements
-- **Read-Only Verification**: The `last_used_at` timestamp is intentionally left untouched during token verification to strictly respect the constraint of read-only access for this backend node layer during migration. (If required for auditing later, a transaction could be added).
+- **Read-Only Verification (last_used_at)**: The `last_used_at` timestamp is intentionally left untouched during token verification to strictly respect the constraint of read-only access for this backend node layer during migration. (If required for auditing later, a transaction could be added). This is an **INTENTIONAL NODE MIGRATION-PHASE DEVIATION**.
+- **Strict Token Parsing**: Actual Laravel Sanctum (`vendor/laravel/sanctum/src/PersonalAccessToken.php:findToken`) falls back to a full-table scan if the pipe delimiter `|` is missing. Node intentionally omits this fallback, strictly requiring `{id}|{token}` to prevent unindexed table scans and enforce modern token formats.
 
 ## 17. Known Limitations
 - Modifying `last_used_at` timestamp is skipped to respect DB integrity limits.

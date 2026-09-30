@@ -37,6 +37,60 @@ async function findById(id, client) {
 }
 
 /**
+ * findByIdWithProfileAndInterests(id, client?)
+ *
+ * Finds a user by ID and includes their user_profiles and user_interests (with actual interests).
+ *
+ * @param {BigInt|string|number} id
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object|null>}
+ */
+async function findByIdWithProfileAndInterests(id, client) {
+  const db = client || prisma;
+  try {
+    return await db.users.findUnique({
+      where: { id: BigInt(id) },
+      include: {
+        user_profiles: true,
+        user_interests: {
+          include: {
+            interests: true
+          }
+        }
+      }
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findByIdWithInterestsCount(id, client?)
+ *
+ * Finds a user by ID and includes the count of their user_interests for profile completion calculation.
+ *
+ * @param {BigInt|string|number} id
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object|null>}
+ */
+async function findByIdWithInterestsCount(id, client) {
+  const db = client || prisma;
+  try {
+    return await db.users.findUnique({
+      where: { id: BigInt(id) },
+      include: {
+        user_profiles: true, // We still need user_profiles to calculate completion
+        _count: {
+          select: { user_interests: true }
+        }
+      }
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
  * findByEmail(email, client?)
  *
  * Finds a user by their unique email address.
@@ -82,4 +136,4 @@ async function create(data, client) {
   }
 }
 
-module.exports = { findById, findByEmail, create };
+module.exports = { findById, findByEmail, create, findByIdWithProfileAndInterests, findByIdWithInterestsCount };
