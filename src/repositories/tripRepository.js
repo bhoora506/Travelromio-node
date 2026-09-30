@@ -188,4 +188,136 @@ async function update(id, data, client) {
   }
 }
 
-module.exports = { findById, findByOwnerId, findPublished, findPublishedUpcoming, findByStatus, create, update };
+/**
+ * findByIdWithRelations(id, authenticatedUserId, client?)
+ *
+ * Retrieves a trip with all relationships required by the API.
+ * Includes the active members count and the authenticated user's membership details.
+ *
+ * @param {BigInt|string|number} id
+ * @param {BigInt|string|number} authenticatedUserId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object|null>}
+ */
+async function findByIdWithRelations(id, authenticatedUserId, client) {
+  const db = client || prisma;
+  try {
+    return await db.trips.findUnique({
+      where: { id: BigInt(id) },
+      include: {
+        users: true, // owner
+        trip_interests: { include: { interests: true } },
+        trip_members: {
+          where: { user_id: BigInt(authenticatedUserId) },
+          take: 1
+        },
+        trip_join_requests: {
+          where: { user_id: BigInt(authenticatedUserId) },
+          take: 1
+        },
+        _count: {
+          select: {
+            trip_members: { where: { status: 'active' } }
+          }
+        }
+      }
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findMyTripsPaginated(userId, page, perPage, client?)
+ *
+ * @param {BigInt|string|number} userId
+ * @param {number} page
+ * @param {number} perPage
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object>}
+ */
+async function findMyTripsPaginated(userId, page = 1, perPage = 15, client) {
+  const db = client || prisma;
+  const skip = (page - 1) * perPage;
+  
+  try {
+    const where = { user_id: BigInt(userId) };
+    const [total, items] = await Promise.all([
+      db.trips.count({ where }),
+      db.trips.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: perPage,
+        include: {
+          users: true,
+          trip_interests: { include: { interests: true } },
+          trip_members: { where: { user_id: BigInt(userId) }, take: 1 },
+          trip_join_requests: { where: { user_id: BigInt(userId) }, take: 1 },
+          _count: { select: { trip_members: { where: { status: 'active' } } } }
+        }
+      })
+    ]);
+    return { total, items, perPage, page, lastPage: Math.max(1, Math.ceil(total / perPage)) };
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findMyJoinedTripsPaginated(userId, page, perPage, client?)
+ *
+ * @param {BigInt|string|number} userId
+ * @param {number} page
+ * @param {number} perPage
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object>}
+ */
+async function findMyJoinedTripsPaginated(userId, page = 1, perPage = 15, client) {
+  const db = client || prisma;
+  const skip = (page - 1) * perPage;
+  
+  try {
+    const where = {
+      trip_members: {
+        some: {
+          user_id: BigInt(userId),
+          role: 'member',
+          status: 'active'
+        }
+      }
+    };
+    const [total, items] = await Promise.all([
+      db.trips.count({ where }),
+      db.trips.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: perPage,
+        include: {
+          users: true,
+          trip_interests: { include: { interests: true } },
+          trip_members: { where: { user_id: BigInt(userId) }, take: 1 },
+          trip_join_requests: { where: { user_id: BigInt(userId) }, take: 1 },
+          _count: { select: { trip_members: { where: { status: 'active' } } } }
+        }
+      })
+    ]);
+    return { total, items, perPage, page, lastPage: Math.max(1, Math.ceil(total / perPage)) };
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+module.exports = { 
+  findById, 
+  findByOwnerId, 
+  findPublished, 
+  findPublishedUpcoming, 
+  findByStatus, 
+  create, 
+  update,
+  findByIdWithRelations,
+  findMyTripsPaginated,
+  findMyJoinedTripsPaginated
+};

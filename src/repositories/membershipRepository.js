@@ -186,6 +186,31 @@ async function updateStatus(tripId, userId, status, client) {
   }
 }
 
+/**
+ * findActiveByTripIdWithUser(tripId, client?)
+ *
+ * @param {BigInt|string|number} tripId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object[]>}
+ */
+async function findActiveByTripIdWithUser(tripId, client) {
+  const db = client || prisma;
+  try {
+    return await db.trip_members.findMany({
+      where: {
+        trip_id: BigInt(tripId),
+        status: 'active',
+      },
+      include: {
+        users: true,
+      },
+      orderBy: { joined_at: 'asc' },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
 module.exports = {
   findByTripAndUser,
   findByTripId,
@@ -194,4 +219,5 @@ module.exports = {
   findByUserId,
   create,
   updateStatus,
+  findActiveByTripIdWithUser,
 };
