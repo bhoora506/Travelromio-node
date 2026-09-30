@@ -7,6 +7,10 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "verify:db": "node scripts/verify-db.js",
+    "test:repositories": "node scripts/test-repositories.js",
+    "db:pull": "prisma db pull",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
