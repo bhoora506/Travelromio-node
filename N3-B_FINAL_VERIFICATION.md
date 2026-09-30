@@ -12,7 +12,7 @@
 | GET | `/api/interests` | Public | None | Implemented |
 
 ## 3. Laravel Compatibility
-Inspected `D:\laragon\www\Tripromio\routes\api.php`, `ProfileController.php`, `AuthController.php`, `InterestController.php`, and `UserResource.php`. The Node endpoints identically reflect Laravel's structure. For instance, `/api/auth/me` returns the user without the `profile` object loaded but includes the calculated `profile_completion`. `/api/profile` returns the user with the `profile` object loaded. The base JSON envelope matches Laravel's `ApiResponse` trait perfectly.
+Inspected `D:\laragon\www\Tripromio\routes\api.php`, `ProfileController.php`, `AuthController.php`, `InterestController.php`, and `UserResource.php`. The Node endpoints are fully compatible with Laravel's structure. For instance, `/api/auth/me` returns the user without the `profile` object loaded but includes the calculated `profile_completion`. `/api/profile` returns the user with the `profile` object loaded. The base JSON envelope is fully compatible with Laravel's `ApiResponse` trait.
 
 ## 4. Flutter Compatibility
 Inspected `D:\development\tripromio\lib\core\network\api_client.dart` and `D:\development\tripromio\lib\core\constants\api_constants.dart`. Flutter consumes the `{ success, message, data }` format strictly and intercepts `401` gracefully.
@@ -69,7 +69,7 @@ All responses return HTTP 200 OK with shape:
 No confirmed Laravel defect was found in the audited N3-B scope.
 
 ## 15. Node Improvements / Deviations
-- **N+1 Avoidance**: In Laravel, `profile_completion` dynamically lazy-loads profiles and interests, which is an N+1 vulnerability. Node queries the `interests` count explicitly at the Prisma level (`_count`) inside `findByIdWithInterestsCount`, achieving identical calculation safely and much more efficiently.
+- **Performance Optimization (N+1)**: In Laravel, calculating `profile_completion` dynamically lazy-loads the profile and interests count, leading to a query/performance inefficiency (N+1 queries). The Node implementation explicitly queries the `interests` count at the database level using Prisma's `_count` feature inside `findByIdWithInterestsCount`, achieving identical behavior with improved query performance.
 - **Middleware Application**: Node applies the `authenticate` middleware explicitly per route to ensure that unregistered endpoints (`404`) do not erroneously fail authentication (`401`) before routing, closely matching Laravel's route priority evaluation.
 
 ## 16. Known Limitations

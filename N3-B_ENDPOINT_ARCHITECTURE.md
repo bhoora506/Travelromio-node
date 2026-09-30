@@ -22,7 +22,7 @@ Requests follow strict separation of concerns matching the approved blueprint:
 
 ## 4. Laravel & Flutter Compatibility
 - **HTTP Structure**: `successResponse` exactly matches Laravel's `ApiResponse` trait: `{ "success": true, "message": "...", "data": {...} }`.
-- **UserResource**: Maps `profile_completion`, `created_at`, `email_verified_at` identical to Laravel's `App\Http\Resources\UserResource`.
+- **UserResource**: Maps `profile_completion`, `created_at`, `email_verified_at` compatible with Laravel's `App\Http\Resources\UserResource`.
 - **ProfileResource**: Correctly generates `profile_photo_url` dynamically using `src/utils/storage.js` to replicate `Storage::disk('public')->url()`.
 - **Missing Relationship Loading**: `GET /api/auth/me` intentionally omits `profile` from the response (exactly matching Laravel's `$this->whenLoaded('profile')`), while still utilizing it to calculate `profile_completion`. `GET /api/profile` includes the profile explicitly.
 
