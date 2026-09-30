@@ -18,6 +18,12 @@
  *   - ONE owner per trip → TripService (future)
  *   - Leave/remove workflow → TripMemberService (future)
  *   - Authorization → middleware (future)
+ *
+ * Laravel equivalents:
+ *   - findByTripId       → Trip::tripMembers()  (all statuses)
+ *   - findActiveByTripId → Trip::activeMembers() (status='active' only)
+ *   - findByUserId       → User::tripMembers()  (all trips, all statuses)
+ *   - findActiveByUserId → User::tripMembers().where('status','active')
  */
 
 const prisma = require('../config/database');
@@ -50,7 +56,8 @@ async function findByTripAndUser(tripId, userId, client) {
 /**
  * findByTripId(tripId, client?)
  *
- * Returns all membership rows for a trip.
+ * Returns ALL membership rows for a trip (all statuses: active, left, removed).
+ * Maps to Laravel's Trip::tripMembers() relationship.
  *
  * @param {BigInt|string|number} tripId
  * @param {PrismaClient} [client]
@@ -61,6 +68,51 @@ async function findByTripId(tripId, client) {
   try {
     return await db.trip_members.findMany({
       where: { trip_id: BigInt(tripId) },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findActiveByTripId(tripId, client?)
+ *
+ * Returns only ACTIVE membership rows for a trip.
+ * Maps to Laravel's Trip::activeMembers() relationship.
+ * Used by future TripService for capacity checks (remainingSlots):
+ *   remainingSlots = max_members - activeMembers.count
+ *
+ * @param {BigInt|string|number} tripId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object[]>}
+ */
+async function findActiveByTripId(tripId, client) {
+  const db = client || prisma;
+  try {
+    return await db.trip_members.findMany({
+      where: { trip_id: BigInt(tripId), status: 'active' },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * countActiveByTripId(tripId, client?)
+ *
+ * Returns the count of active members for a trip.
+ * Efficient alternative to findActiveByTripId() when only the count is needed
+ * for capacity checks. Maps to Trip::activeMembers()->count() in Laravel.
+ *
+ * @param {BigInt|string|number} tripId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<number>}
+ */
+async function countActiveByTripId(tripId, client) {
+  const db = client || prisma;
+  try {
+    return await db.trip_members.count({
+      where: { trip_id: BigInt(tripId), status: 'active' },
     });
   } catch (err) {
     throw normaliseError(err);
@@ -137,6 +189,8 @@ async function updateStatus(tripId, userId, status, client) {
 module.exports = {
   findByTripAndUser,
   findByTripId,
+  findActiveByTripId,
+  countActiveByTripId,
   findByUserId,
   create,
   updateStatus,

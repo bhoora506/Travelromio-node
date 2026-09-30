@@ -18,6 +18,8 @@
  *   This repository does NOT enforce "only one pending" or reverse-direction
  *   checks or self-connection prevention. Those are service-layer rules (N3+).
  *   findBetweenUsers() supports those checks without enforcing them.
+ *   findPendingOrAcceptedBetweenUsers() maps directly to the query used in
+ *   ConnectionRequestService::sendRequest() (Rules 3 and 4).
  */
 
 const prisma = require('../config/database');
@@ -113,6 +115,44 @@ async function findBetweenUsers(userAId, userBId, client) {
 }
 
 /**
+ * findPendingOrAcceptedBetweenUsers(userAId, userBId, client?)
+ *
+ * Returns pending OR accepted connection requests between two users
+ * in either direction. Used by the future ConnectionRequestService to
+ * enforce:
+ *   Rule 3: no pending request already exists in either direction
+ *   Rule 4: no accepted connection already exists in either direction
+ *
+ * Maps to Laravel's ConnectionRequestService::sendRequest() queries:
+ *   ConnectionRequest::where('status', 'pending')
+ *     ->where(fn($q) => A->B OR B->A)
+ *   ConnectionRequest::where('status', 'accepted')
+ *     ->where(fn($q) => A->B OR B->A)
+ *
+ * @param {BigInt|string|number} userAId
+ * @param {BigInt|string|number} userBId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object[]>}  Records with status 'pending' or 'accepted' in either direction.
+ */
+async function findPendingOrAcceptedBetweenUsers(userAId, userBId, client) {
+  const db = client || prisma;
+  try {
+    return await db.connection_requests.findMany({
+      where: {
+        status: { in: ['pending', 'accepted'] },
+        OR: [
+          { requester_id: BigInt(userAId), recipient_id: BigInt(userBId) },
+          { requester_id: BigInt(userBId), recipient_id: BigInt(userAId) },
+        ],
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
  * create(data, client?)
  *
  * @param {object} data  { requester_id, recipient_id }
@@ -153,6 +193,7 @@ module.exports = {
   findByRequester,
   findByRecipient,
   findBetweenUsers,
+  findPendingOrAcceptedBetweenUsers,
   create,
   updateStatus,
 };

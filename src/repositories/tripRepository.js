@@ -11,14 +11,19 @@
  *   - budget_min, budget_max: Decimal(12,2) — same.
  *   - status: VARCHAR(20) backed by PHP TripStatus enum
  *     (draft, published, ongoing, completed, cancelled).
- *   - trip_type: VARCHAR(50) backed by PHP TripType enum.
+ *   - trip_type: VARCHAR(50) backed by PHP TripType enum:
+ *     (weekend, adventure, backpacking, road_trip, nature, photography, cultural, beach, mountains, other)
  *   - Composite index on (status, start_date, end_date) for discovery queries.
  *   - image_path added by a later migration — may be NULL.
+ *   - max_members INCLUDES the owner (e.g. max_members=4 means owner + 3 members).
  *
- * Business rules (NOT in this file):
- *   - max_members enforcement → TripService (future)
- *   - status transition validation → TripService (future)
- *   - owner count → TripService (future)
+ * Laravel equivalents:
+ *   - findById          → Trip::findOrFail()
+ *   - findByOwnerId     → User::trips() scope
+ *   - findPublished     → Trip::where('status','published')
+ *   - findPublishedUpcoming → TripDiscoveryService base query:
+ *                         published + end_date >= today
+ *   - findByStatus      → Trip::where('status', $status)
  */
 
 const prisma = require('../config/database');
@@ -69,6 +74,9 @@ async function findByOwnerId(userId, client) {
  * Returns all trips with status='published' ordered by start_date asc.
  * Leverages the composite (status, start_date, end_date) index.
  *
+ * NOTE: This returns all published trips, including those with past end_dates.
+ * For the discovery feed (excluding past trips) use findPublishedUpcoming().
+ *
  * @param {PrismaClient} [client]
  * @returns {Promise<object[]>}
  */
@@ -78,6 +86,38 @@ async function findPublished(client) {
     return await db.trips.findMany({
       where: { status: 'published' },
       orderBy: { start_date: 'asc' },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findPublishedUpcoming(client?)
+ *
+ * Returns published trips whose end_date >= today (upcoming/current trips only).
+ * Maps to Laravel's TripDiscoveryService base query:
+ *   Trip::where('status', 'published')->where('end_date', '>=', today())
+ *
+ * This is the correct base query for the discovery feed.
+ * It excludes published trips that have already ended.
+ *
+ * Secondary sort by id ASC as stable tie-breaker (matches Laravel pagination behaviour).
+ *
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object[]>}
+ */
+async function findPublishedUpcoming(client) {
+  const db = client || prisma;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  try {
+    return await db.trips.findMany({
+      where: {
+        status: 'published',
+        end_date: { gte: today },
+      },
+      orderBy: [{ start_date: 'asc' }, { id: 'asc' }],
     });
   } catch (err) {
     throw normaliseError(err);
@@ -148,4 +188,4 @@ async function update(id, data, client) {
   }
 }
 
-module.exports = { findById, findByOwnerId, findPublished, findByStatus, create, update };
+module.exports = { findById, findByOwnerId, findPublished, findPublishedUpcoming, findByStatus, create, update };
