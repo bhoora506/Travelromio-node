@@ -15,6 +15,8 @@ const profileController = require('../controllers/profileController');
 const interestController = require('../controllers/interestController');
 const tripController = require('../controllers/tripController');
 const tripMemberController = require('../controllers/tripMemberController');
+const companionDiscoveryController = require('../controllers/companionDiscoveryController');
+const connectionRequestController = require('../controllers/connectionRequestController');
 
 // --- Public Routes ---
 router.get('/interests', interestController.index);
@@ -32,5 +34,13 @@ router.get('/trips/:tripId', authenticate, tripController.show);
 router.get('/my/trips', authenticate, tripController.myTrips);
 router.get('/my/joined-trips', authenticate, tripController.joinedTrips);
 router.get('/trips/:tripId/members', authenticate, tripMemberController.index);
+
+// Companions
+router.get('/companions', authenticate, companionDiscoveryController.index);
+
+// Connections
+router.get('/connections', authenticate, connectionRequestController.index);
+router.get('/connections/received', authenticate, connectionRequestController.received);
+router.get('/connections/sent', authenticate, connectionRequestController.sent);
 
 module.exports = router;
