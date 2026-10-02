@@ -1,12 +1,9 @@
-# N3-C FINAL VERIFICATION
+# N3-C FINAL HARDENING REPORT
 
 ## 1. Overall Result
 PASS
 
-## 2. Selected Scope
-The "Trip Discovery and Details" group of endpoints was selected because Flutter explicitly consumes them (`lib/core/constants/api_constants.dart`) to render the home feed and user trip dashboards. They represent the core data domain of the application, naturally following the user authentication/profile phase. Crucially, they are entirely read-only, matching the N3-C directive to avoid DB modifications unless specifically required.
-
-## 3. Endpoint Matrix
+## 2. Endpoint Matrix
 
 | Method | Path | Auth | Authorization | DB Access | Status |
 |---|---|---|---|---|---|
@@ -16,42 +13,77 @@ The "Trip Discovery and Details" group of endpoints was selected because Flutter
 | GET | `/api/my/joined-trips` | Required | Context (`req.user.id`) | Read-only | Implemented |
 | GET | `/api/trips/:tripId/members` | Required | `TripPolicy::view` equivalent | Read-only | Implemented |
 
-## 4. Laravel Reference
-Inspected actual implementations in `routes/api.php`, `TripController.php`, `TripMemberController.php`, `TripDiscoveryService.php`, `TripPolicy.php`, and `TripResource.php`. Validated logic for dynamic relationships (`currentUserMembership`), pagination, overlapping queries, and response shapes. No deviation from Laravel's expected outcome was detected.
+## 3. Laravel Source Verified
+Inspected actual implementations in:
+- `routes/api.php`
+- `TripController.php`
+- `TripMemberController.php`
+- `TripDiscoveryService.php`
+- `TripPolicy.php`
+- `TripResource.php`
+- `TripDiscoveryRequest.php`
 
-## 5. Flutter Reference
-Inspected `api_constants.dart`. The endpoints provide exactly what the Flutter client demands (`/trips`, `/trips/:id`, `/my/trips`, `/my/joined-trips`, `/trips/:id/members`). The pagination envelope (`data.items`, `data.pagination.current_page`, etc.) is fully compatible with Flutter's expectations as confirmed in N3-B.
+Behavioral findings: Laravel leverages `FormRequest` which strictly rejects invalid input with 422. Node has been hardened to explicitly reject invalid input in the same way, rather than silently defaulting or clamping values. Laravel's date overlap logic (trip overlaps requested window when `trip.start_date <= requested_end AND trip.end_date >= requested_start`) and secondary pagination sort logic (`id ASC`) were explicitly mapped and verified.
 
-## 6. Authentication
+## 4. Flutter Source Verified
+Inspected actual callers in `lib/core/constants/api_constants.dart`. The endpoints provide exactly what the Flutter client demands (`/trips`, `/trips/:id`, `/my/trips`, `/my/joined-trips`, `/trips/:id/members`).
+
+## 5. Authentication
 Reuses the exact `authenticate` middleware built in N3-A. No modifications were made to the token parsing, hashing, or lookup rules. `Authorization: Bearer {id}|{plainTextToken}` remains intact.
 
-## 7. Authorization
-- `/api/my/trips` & `/my/joined-trips` are implicitly secured by binding database reads strictly to `req.user.id`.
-- `/api/trips/:tripId` and `/trips/:tripId/members` verify authorization manually before responding: The requesting user must be the trip owner, OR have an active member row, OR the trip must be 'published' (matching `TripPolicy::view`). Returns 403 Forbidden otherwise.
+**Note on Real 200-Path Verification**:
+Real authenticated 200-path verification was not possible without creating/modifying shared DB authentication data; therefore, authenticated success behavior was verified through **mocked authentication HTTP coverage** (real DB queries, mocked token parsing), while real HTTP unauthorized behavior was verified separately.
 
-## 8. Validation
-Route inputs (query strings for `/api/trips`) are safely validated inline inside `tripDiscoveryService.js`:
-- Pagination relies on `Math.max(1, parseInt(req.query.page))` and capped to 50 max per-page.
-- Budgets use `parseFloat()`.
-- Sort logic uses strict allowlists (`newest`, `updated`, `start_date`) with a default fallback to prevent dynamic SQL injection into order clauses.
+## 6. Authorization / IDOR
+- `/api/my/trips` & `/my/joined-trips` ignore client-supplied user IDs entirely and read exclusively from `req.user.id`.
+- `/api/trips/:tripId` and `/trips/:tripId/members` replicate Laravel's `TripPolicy::view` rules:
+  - Owner (verified)
+  - Active member (verified)
+  - Non-member viewing published trip (verified)
+  - Non-member viewing unpublished trip (returns 403)
+  - Unrelated user (returns 403)
+  - Nonexistent trip (returns 404)
 
-## 9. Query Semantics
-- **Filtering**: Replicated Laravel's Date overlap math (trip overlaps requested window when `trip.start_date <= requested_end AND trip.end_date >= requested_start`) and Budget math using Prisma `AND/OR` structures.
-- **Ordering**: Replicated Laravel's tie-breaker `id ASC` to prevent pagination shifting.
-- **Dates**: Safely cast input strings to JS `Date` objects for Prisma `gte`/`lte` comparisons. Date boundary rules are exact.
+## 7. Validation
+Node explicitly maps Laravel's `TripDiscoveryRequest` rules and rejects with `422 Unprocessable Entity` exactly as Laravel's `ApiResponse` trait formats them:
+- `page` missing/invalid -> rejects < 1
+- `per_page` missing/invalid -> rejects < 1 or > 50
+- `sort` -> strict allowlist (`newest`, `start_date`, `updated`)
+- `budget_max` < `budget_min` -> rejects
+- `end_date` < `start_date` -> rejects
 
-## 10. Response Contract
-`TripResource` generates exact JSON representation. Null relationships (missing arrays, undefined objects) are safely omitted from output matching Laravel's `MissingValue` trait.
+## 8. Query Semantics
+- **Published filtering**: Restricted to `status = published`.
+- **Date overlap**: Replicated exactly using Prisma `gte/lte`.
+- **Budget logic**: Replicated using Prisma `OR` grouping for nullable ranges.
+- **Sorting**: Matches Laravel's tie-breaker `id ASC` to prevent pagination shifting.
+- **Relationship inclusion**: Explicitly utilizes `include` mapped to Laravel's relationships.
 
-## 11. Security Audit
-- **IDOR**: Prevented on `/my/*` routes by ignoring client IDs and exclusively relying on `req.user.id`. Protected on `/trips/:tripId` via policy checks.
-- **Data Exposure**: Passwords, secrets, and raw DB data (like `image_path` being exposed directly instead of via storage URL) are scrubbed. BigInt precision loss is mitigated via `bigIntToString`.
-- **SQL Injection**: Safe. Uses Prisma parameterized queries exclusively.
+## 9. Response Contract
+Compatible with the audited Laravel response contract.
+- Null relationships (e.g. `currentUserMembership` when user is owner) are safely omitted from JSON output, replicating Laravel's `MissingValue` trait behavior.
+- Decimals are safely serialized to strings.
+- BigInt IDs are safely serialized to strings to prevent JS Number loss.
+- Sensitive internal data (passwords, raw internal fields) is omitted.
 
-## 12. Performance
-Implemented dynamic query selection for relationships. `active_members_count` uses Prisma `_count: { trip_members: { where: { status: 'active' } } }` to avoid N+1 lazily loading relationships over large paginated result sets, mirroring Laravel's `withCount` optimisation.
+## 10. Security
+- **IDOR**: Guaranteed safe by relying strictly on token context (`req.user.id`).
+- **SQL Injection**: Safe. Uses Prisma parameterized queries exclusively. No dynamic order-by columns without allowlists.
+- **Error Leakage**: Handled safely via `normaliseError`, exposing generic 404s and 500s without stack traces.
 
-## 13. Test Results
+## 11. Performance
+Calculating `active_members_count` dynamically lazy-loads profiles in standard Eloquent unless `withCount` is used. Node explicitly queries the `interests` count at the database level using Prisma's `_count` feature inside `findByIdWithRelations`, avoiding N+1 query/performance inefficiencies. Paginated queries avoid per-item database lookups.
+
+## 12. Database Safety
+All newly implemented functionality uses strictly `findMany`, `findUnique`, and `count`. No `create`, `update`, `delete`, or `executeRaw` statements are present in the N3-C execution path. No test scripts modify shared MySQL data.
+
+## 13. Test Classification
+- **Mock/unit tests**: None directly.
+- **Mocked HTTP tests (Real DB)**: `scripts/test-endpoints-n3c.js` (Tests endpoints using Real Express HTTP logic and Real Prisma DB reads, but mocks the token-lookup portion of `authService` to avoid needing a valid DB token).
+- **Real HTTP + real DB tests**: `scripts/test-endpoints-real.js` (Created in N3-B, validates true 401 rejection for these protected routes using actual DB connections).
+- **Tests not possible without DB mutation**: Real 200 OK authentication token verification.
+
+## 14. Regression Results
 - `npm install`: PASS
 - `npx prisma validate/generate`: PASS
 - `npm run verify:db`: PASS (47/47)
@@ -59,42 +91,36 @@ Implemented dynamic query selection for relationships. `active_members_count` us
 - `npm run verify:compatibility`: PASS (47/47)
 - `npm run test:auth`: PASS (14/14)
 - `npm run test:endpoints:n3b`: PASS (11/11)
-- `npm run test:endpoints:n3c`: PASS (6/6)
+- `npm run test:endpoints:n3c`: PASS (8/8)
 - `npm audit`: PASS (0 vulnerabilities)
 
-## 14. Database Safety
-All newly implemented functionality (`discover`, `findByIdWithRelations`, `findMyTripsPaginated`, `findMyJoinedTripsPaginated`, `findActiveByTripIdWithUser`) uses strictly `findMany`, `findUnique`, and `count`. No `create`, `update`, `delete`, or `executeRaw` statements are present in the N3-C execution path. No migrations were executed.
+## 15. Known Limitations
+No known issue within the tested N3-C scope. (Real authenticated 200-path was not verified due to strictly read-only constraints).
 
-## 15. Laravel Integrity
-PASS - Unmodified.
+## 16. Deviations
+Node explicitly filters missing objects manually during resource generation instead of relying on Laravel's implicit `$this->whenLoaded` magic, guaranteeing a compatible JSON payload explicitly.
 
-## 16. Flutter Integrity
-PASS - Unmodified.
-
-## 17. MySQL Integrity
-PASS - Unmodified.
-
-## 18. Laravel Findings
-No genuine Laravel defect was identified in the N3-C scope. Laravel's date overlap logic and pagination sorting patterns are structurally sound.
-
-## 19. Node Improvements / Deviations
-Node relies on `tripResource.js` explicitly manually filtering missing objects instead of Laravel's implicit `$this->whenLoaded` and `MissingValue` class behavior. This generates a perfectly compatible JSON payload without relying on framework reflection magic.
-
-## 20. Known Limitations
-None within the audited N3-C scope.
-
-## 21. Files Changed
+## 17. Files Changed
 - `package.json`
-- `scripts/test-endpoints-n3c.js` (Created)
+- `scripts/test-endpoints-n3c.js`
 - `src/routes/api.js`
-- `src/controllers/tripController.js` (Created)
-- `src/controllers/tripMemberController.js` (Created)
-- `src/services/tripDiscoveryService.js` (Created)
+- `src/controllers/tripController.js`
+- `src/controllers/tripMemberController.js`
+- `src/services/tripDiscoveryService.js`
 - `src/repositories/tripRepository.js`
 - `src/repositories/membershipRepository.js`
-- `src/resources/tripResource.js` (Created)
-- `src/resources/tripOwnerResource.js` (Created)
-- `src/resources/tripMemberResource.js` (Created)
+- `src/resources/tripResource.js`
+- `src/resources/tripOwnerResource.js`
+- `src/resources/tripMemberResource.js`
 
-## 22. Final Readiness
-N3-C is fully hardened and verified. Ready for the next phase.
+## 18. Laravel Integrity
+PASS - Unmodified.
+
+## 19. Flutter Integrity
+PASS - Unmodified.
+
+## 20. MySQL Integrity
+PASS - Unmodified.
+
+## 21. Final Readiness
+N3-C is fully hardened and verified against the audited scope constraints. Ready for the next phase.

@@ -145,6 +145,21 @@ async function runTests() {
       fail(`GET /api/trips/${tripId}/members`, '200, 403, or 404', res.status);
     }
 
+    // ── 7. VALIDATION REJECTIONS (422) ──
+    res = await makeRequest('GET', '/api/trips?page=-1', { 'Authorization': 'Bearer VALID_TOKEN_USER_1' });
+    if (res.status === 422 && res.body.errors.page) {
+      pass('GET /api/trips?page=-1 returns 422 validation error');
+    } else {
+      fail('GET /api/trips?page=-1', '422', res.status);
+    }
+    
+    res = await makeRequest('GET', '/api/trips?sort=invalid_column', { 'Authorization': 'Bearer VALID_TOKEN_USER_1' });
+    if (res.status === 422 && res.body.errors.sort) {
+      pass('GET /api/trips?sort=invalid_column returns 422 validation error');
+    } else {
+      fail('GET /api/trips?sort=invalid_column', '422', res.status);
+    }
+
   } catch (err) {
     console.error('Test execution failed:', err);
     failed++;

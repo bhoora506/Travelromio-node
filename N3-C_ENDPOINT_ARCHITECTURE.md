@@ -12,7 +12,7 @@ This phase targets **Trip Discovery and Details (Read-Only)** based on Flutter's
 | `GET /api/trips/:tripId/members` | List active members of a trip | `tripMemberController.index` | `TripMemberController@index` |
 
 ## 2. Rationale
-Flutter explicitly targets these endpoints in `api_constants.dart` (`trips`, `myTrips`, `myJoinedTrips`, `tripById`, `tripMembers`). They are strictly read-only, perfectly complying with N3-C safety guidelines. They logically follow N3-B by transitioning from User profiles to the core domain model (Trips).
+Flutter explicitly targets these endpoints in `api_constants.dart` (`trips`, `myTrips`, `myJoinedTrips`, `tripById`, `tripMembers`). They are strictly read-only, complying with N3-C safety guidelines. They logically follow N3-B by transitioning from User profiles to the core domain model (Trips).
 
 ## 3. Architecture
 
@@ -24,9 +24,10 @@ Flutter explicitly targets these endpoints in `api_constants.dart` (`trips`, `my
 - `src/controllers/tripController.js` handles discovery and fetching individual/my trips.
 - `src/controllers/tripMemberController.js` handles fetching trip members.
 - Authorization is executed inline inside controllers, mirroring Laravel Policies (e.g., `TripPolicy::view`).
+- Query parameters are validated explicitly in the controllers to ensure compliance with Laravel's `FormRequest` validation contract, rejecting invalid inputs rather than silently clamping them.
 
 ### Service Layer
-- `src/services/tripDiscoveryService.js` accurately replicates `App\Services\TripDiscoveryService.php`.
+- `src/services/tripDiscoveryService.js` is mapped to `App\Services\TripDiscoveryService.php`.
 - Evaluates overlapping date rules (via `start_date`/`end_date` boundary math).
 - Evaluates overlapping budget rules.
 - Manages strict sorting allowlists (`newest`, `updated`, `start_date`) with a stable secondary sort (`id ASC`) to prevent pagination drifting.
@@ -34,14 +35,14 @@ Flutter explicitly targets these endpoints in `api_constants.dart` (`trips`, `my
 ### Repository Layer
 - `src/repositories/tripRepository.js` implements specific methods for paginated loading with relationships (`findByIdWithRelations`, `findMyTripsPaginated`, `findMyJoinedTripsPaginated`).
 - `src/repositories/membershipRepository.js` adds `findActiveByTripIdWithUser` to fetch active members eagerly loaded with user data.
-- Eager loads use `take: 1` dynamically bounded by the authenticated `user_id` to replicate Laravel's `currentUserMembership` loading safely.
+- Eager loads use `take: 1` dynamically bounded by the authenticated `user_id` to safely approximate Laravel's `currentUserMembership` loading.
 
 ### Resource Layer
-- **TripResource (`src/resources/tripResource.js`)**: Matches Laravel's `TripResource`. Formats IDs as strings, decimals as strings, generates the public storage URL for the trip image, and dynamically injects `membership` state based on `currentUserMembership` and `currentUserJoinRequest`.
-- **TripOwnerResource (`src/resources/tripOwnerResource.js`)**: Matches Laravel's lightweight nested representation to prevent deep recursive serialization.
+- **TripResource (`src/resources/tripResource.js`)**: Compatible with Laravel's `TripResource` structure. Formats IDs as strings, decimals as strings, generates the public storage URL for the trip image, and dynamically injects `membership` state based on `currentUserMembership` and `currentUserJoinRequest`.
+- **TripOwnerResource (`src/resources/tripOwnerResource.js`)**: Compatible with Laravel's lightweight nested representation to prevent deep recursive serialization.
 - **TripMemberResource (`src/resources/tripMemberResource.js`)**: Represents member relationships securely.
 
 ## 4. Security & Safety
 - **IDOR Protection**: `GET /api/my/trips` and `GET /api/my/joined-trips` strictly read `req.user.id` from the middleware token context.
 - **Authorization**: `GET /api/trips/:tripId` explicitly executes the three rules from `TripPolicy::view`: (1) is owner, OR (2) is active member, OR (3) trip is published.
-- **Safe Serialization**: BigInts are stringified. Prisma's internal representations are filtered securely. Null fields are preserved appropriately. Unsafe/unbound pagination is prevented (`Math.max(1, Math.min(50, ...))`).
+- **Safe Serialization**: BigInts are stringified. Prisma's internal representations are filtered securely. Missing relationships are safely omitted from JSON responses. Unsafe/unbound pagination is prevented via 422 validations.
