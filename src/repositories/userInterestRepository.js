@@ -29,7 +29,9 @@ async function sync(userId, interestIds) {
 
       // 2. Insert new interests if any exist
       if (interestIds && interestIds.length > 0) {
-        const data = interestIds.map(id => ({
+        // Deduplicate array to emulate Laravel Eloquent sync() behavior
+        const uniqueIds = [...new Set(interestIds)];
+        const data = uniqueIds.map(id => ({
           user_id: BigInt(userId),
           interest_id: BigInt(id),
           created_at: new Date(),
@@ -38,6 +40,7 @@ async function sync(userId, interestIds) {
 
         await tx.user_interests.createMany({
           data,
+          skipDuplicates: true // Defensive extra layer
         });
       }
     });

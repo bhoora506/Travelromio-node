@@ -36,47 +36,67 @@ class ProfileService {
       }
     }
 
-    if (updateData.languages) {
+    if (updateData.bio !== undefined && updateData.bio !== null) {
+      if (typeof updateData.bio !== 'string' || updateData.bio.length > 1000) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { bio: ['The bio must not be greater than 1000 characters.'] } });
+      }
+    }
+    
+    if (updateData.city !== undefined && updateData.city !== null) {
+      if (typeof updateData.city !== 'string' || updateData.city.length > 100) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { city: ['The city must not be greater than 100 characters.'] } });
+      }
+    }
+
+    if (updateData.country !== undefined && updateData.country !== null) {
+      if (typeof updateData.country !== 'string' || updateData.country.length > 100) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { country: ['The country must not be greater than 100 characters.'] } });
+      }
+    }
+
+    if (updateData.languages !== undefined && updateData.languages !== null) {
       if (!Array.isArray(updateData.languages)) {
-        throw new HttpError(422, 'Validation failed', {
-          success: false,
-          message: 'The given data was invalid.',
-          errors: { languages: ['The languages must be an array.'] }
-        });
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { languages: ['The languages must be an array.'] } });
       }
       if (updateData.languages.length > 10) {
-        throw new HttpError(422, 'Validation failed', {
-          success: false,
-          message: 'The given data was invalid.',
-          errors: { languages: ['The languages may not have more than 10 items.'] }
-        });
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { languages: ['The languages may not have more than 10 items.'] } });
+      }
+      for (const l of updateData.languages) {
+        if (typeof l !== 'string' || l.length > 50) {
+          throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { 'languages.*': ['The languages must not be greater than 50 characters.'] } });
+        }
       }
     }
 
     if (updateData.travel_style !== undefined && updateData.travel_style !== null) {
       const allowedStyles = [
-        'luxury', 'budget', 'adventure', 'relaxing', 'cultural',
-        'nature', 'foodie', 'party', 'family', 'solo'
+        'adventure', 'backpacking', 'budget', 'luxury', 'relaxed',
+        'road_trip', 'nature', 'cultural'
       ];
-      if (!allowedStyles.includes(updateData.travel_style)) {
-        throw new HttpError(422, 'Validation failed', {
-          success: false,
-          message: 'The given data was invalid.',
-          errors: { travel_style: ['The selected travel style is invalid.'] }
-        });
+      if (typeof updateData.travel_style !== 'string' || !allowedStyles.includes(updateData.travel_style)) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { travel_style: ['The selected travel style is invalid.'] } });
       }
     }
 
+    if (updateData.preferred_budget_min !== undefined && updateData.preferred_budget_min !== null) {
+      const minNum = parseFloat(updateData.preferred_budget_min);
+      if (isNaN(minNum) || minNum < 0) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { preferred_budget_min: ['The preferred budget min must be at least 0.'] } });
+      }
+      updateData.preferred_budget_min = minNum;
+    }
+
     if (updateData.preferred_budget_max !== undefined && updateData.preferred_budget_max !== null) {
+      const maxNum = parseFloat(updateData.preferred_budget_max);
+      if (isNaN(maxNum) || maxNum < 0) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { preferred_budget_max: ['The preferred budget max must be at least 0.'] } });
+      }
       if (updateData.preferred_budget_min !== undefined && updateData.preferred_budget_min !== null) {
-        if (parseFloat(updateData.preferred_budget_max) < parseFloat(updateData.preferred_budget_min)) {
-          throw new HttpError(422, 'Validation failed', {
-            success: false,
-            message: 'The given data was invalid.',
-            errors: { preferred_budget_max: ['The preferred budget max must be greater than or equal to preferred budget min.'] }
-          });
+        if (maxNum < updateData.preferred_budget_min) {
+          throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { preferred_budget_max: ['The preferred budget max must be greater than or equal to preferred budget min.'] } });
         }
       }
+      updateData.preferred_budget_max = maxNum;
     }
 
     await profileRepository.upsert(userId, updateData);
@@ -86,31 +106,22 @@ class ProfileService {
   }
 
   async updateInterests(userId, interestIds) {
-    if (!Array.isArray(interestIds)) {
-      throw new HttpError(422, 'Validation failed', {
-        success: false,
-        message: 'The given data was invalid.',
-        errors: { interest_ids: ['The interest ids must be an array.'] }
-      });
+    if (!interestIds || !Array.isArray(interestIds)) {
+      throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { interest_ids: ['The interest ids field is required and must be an array.'] } });
     }
 
     if (interestIds.length > 20) {
-      throw new HttpError(422, 'Validation failed', {
-        success: false,
-        message: 'The given data was invalid.',
-        errors: { interest_ids: ['The interest ids may not have more than 20 items.'] }
-      });
+      throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { interest_ids: ['The interest ids may not have more than 20 items.'] } });
     }
 
     // Verify all IDs exist
     for (const id of interestIds) {
+      if (!Number.isInteger(id)) {
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { 'interest_ids.*': ['The interest ids must be an integer.'] } });
+      }
       const interest = await interestRepository.findById(id);
       if (!interest) {
-        throw new HttpError(422, 'Validation failed', {
-          success: false,
-          message: 'The given data was invalid.',
-          errors: { interest_ids: ['The selected interest ids is invalid.'] }
-        });
+        throw new HttpError(422, 'Validation failed', { success: false, message: 'The given data was invalid.', errors: { 'interest_ids.*': ['The selected interest ids is invalid.'] } });
       }
     }
 
