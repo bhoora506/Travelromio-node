@@ -12,6 +12,9 @@ const router = express.Router();
 const authenticate = require('../middleware/authenticate');
 const authController = require('../controllers/authController');
 const profileController = require('../controllers/profileController');
+const profileStatsController = require('../controllers/profileStatsController');
+const preferredDestinationController = require('../controllers/preferredDestinationController');
+const travelAvailabilityController = require('../controllers/travelAvailabilityController');
 const interestController = require('../controllers/interestController');
 const tripController = require('../controllers/tripController');
 const tripMemberController = require('../controllers/tripMemberController');
@@ -28,6 +31,9 @@ router.get('/auth/me', authenticate, authController.me);
 
 // Profile
 router.get('/profile', authenticate, profileController.show);
+router.get('/profile/stats', authenticate, profileStatsController.show);
+router.get('/profile/destinations', authenticate, preferredDestinationController.index);
+router.get('/profile/availability', authenticate, travelAvailabilityController.index);
 
 // Trips
 router.get('/trips', authenticate, tripController.index);
