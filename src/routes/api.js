@@ -17,6 +17,7 @@ const tripController = require('../controllers/tripController');
 const tripMemberController = require('../controllers/tripMemberController');
 const companionDiscoveryController = require('../controllers/companionDiscoveryController');
 const connectionRequestController = require('../controllers/connectionRequestController');
+const conversationController = require('../controllers/conversationController');
 
 // --- Public Routes ---
 router.get('/interests', interestController.index);
@@ -42,5 +43,10 @@ router.get('/companions', authenticate, companionDiscoveryController.index);
 router.get('/connections', authenticate, connectionRequestController.index);
 router.get('/connections/received', authenticate, connectionRequestController.received);
 router.get('/connections/sent', authenticate, connectionRequestController.sent);
+
+// Conversations
+router.get('/conversations', authenticate, conversationController.index);
+router.get('/conversations/:conversationId', authenticate, conversationController.show);
+router.get('/conversations/:conversationId/messages', authenticate, conversationController.messages);
 
 module.exports = router;

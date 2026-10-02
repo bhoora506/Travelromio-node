@@ -12,6 +12,7 @@
     "test:endpoints:n3b": "node scripts/test-endpoints-n3b.js",
     "test:endpoints:n3c": "node scripts/test-endpoints-n3c.js",
     "test:endpoints:n3d": "node scripts/test-endpoints-n3d.js",
+    "test:endpoints:n3e": "node scripts/test-endpoints-n3e.js",
     "verify:compatibility": "node scripts/verify-laravel-compatibility.js",
     "db:pull": "prisma db pull",
     "db:generate": "prisma generate",
