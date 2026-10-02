@@ -83,4 +83,30 @@ async function update(userId, data, client) {
   }
 }
 
-module.exports = { findByUserId, findWithUser, update };
+/**
+ * upsert(userId, data, client?)
+ *
+ * Creates or updates a profile for the given user.
+ *
+ * @param {BigInt|string|number} userId
+ * @param {object} data  Partial user_profiles fields.
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object>}
+ */
+async function upsert(userId, data, client) {
+  const db = client || prisma;
+  try {
+    return await db.user_profiles.upsert({
+      where: { user_id: BigInt(userId) },
+      update: data,
+      create: {
+        user_id: BigInt(userId),
+        ...data,
+      },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+module.exports = { findByUserId, findWithUser, update, upsert };

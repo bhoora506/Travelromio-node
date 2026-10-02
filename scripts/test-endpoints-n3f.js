@@ -95,7 +95,7 @@ async function runTests() {
 
     // ── 2. Authenticated Checks ──
     res = await makeRequest('GET', '/api/profile/stats', { 'Authorization': 'Bearer VALID_TOKEN_USER_1' });
-    if (res.status === 200 && typeof res.body.trips_count === 'number' && typeof res.body.connections_count === 'number') {
+    if (res.status === 200 && typeof res.body.data?.trips_count === 'number' && typeof res.body.data?.connections_count === 'number') {
       pass('GET /api/profile/stats returns 200 with stats counts');
     } else {
       fail('GET /api/profile/stats', '200 with stats', res.status);

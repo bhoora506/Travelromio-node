@@ -6,8 +6,7 @@
  * Implements N3-F Profile Stats GET endpoint.
  */
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/database');
 const { normaliseError } = require('../db/errors');
 const { successResponse } = require('../utils/response');
 
@@ -42,13 +41,14 @@ class ProfileStatsController {
         }
       });
 
-      res.status(200).json(successResponse(
+      return successResponse(
+        res,
         {
           trips_count: tripsCount,
           connections_count: connectionsCount
         },
         'Stats retrieved successfully'
-      ));
+      );
       
     } catch (error) {
       next(normaliseError(error));

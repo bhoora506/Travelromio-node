@@ -86,7 +86,7 @@ class ForeignKeyConstraintError extends DatabaseError {
  * @param {Error} error  The raw error caught from a Prisma call.
  * @returns {DatabaseError}
  */
-function normaliseError(error) {
+function normaliseError(error) { console.error('DB ERROR:', error);
   if (error instanceof DatabaseError) {
     // Already normalised — do not double-wrap.
     return error;

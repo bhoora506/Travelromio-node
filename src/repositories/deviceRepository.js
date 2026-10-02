@@ -124,4 +124,59 @@ async function remove(id, client) {
   }
 }
 
-module.exports = { findByUserId, findByToken, create, updateLastUsed, remove };
+/**
+ * upsert(userId, fcmToken, platform, client?)
+ *
+ * Creates or updates a device record.
+ *
+ * @param {BigInt|string|number} userId
+ * @param {string} fcmToken
+ * @param {string} platform
+ * @param {PrismaClient} [client]
+ */
+async function upsert(userId, fcmToken, platform, client) {
+  const db = client || prisma;
+  try {
+    return await db.user_devices.upsert({
+      where: { fcm_token: fcmToken },
+      update: {
+        user_id: BigInt(userId),
+        platform,
+        last_used_at: new Date()
+      },
+      create: {
+        user_id: BigInt(userId),
+        fcm_token: fcmToken,
+        platform,
+        last_used_at: new Date()
+      }
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * removeByTokenAndUser(userId, fcmToken, client?)
+ *
+ * Deletes a device record by FCM token and User ID.
+ *
+ * @param {BigInt|string|number} userId
+ * @param {string} fcmToken
+ * @param {PrismaClient} [client]
+ */
+async function removeByTokenAndUser(userId, fcmToken, client) {
+  const db = client || prisma;
+  try {
+    return await db.user_devices.deleteMany({
+      where: {
+        fcm_token: fcmToken,
+        user_id: BigInt(userId)
+      }
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+module.exports = { findByUserId, findByToken, create, updateLastUsed, remove, upsert, removeByTokenAndUser };

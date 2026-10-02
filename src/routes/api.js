@@ -12,6 +12,8 @@ const router = express.Router();
 const authenticate = require('../middleware/authenticate');
 const authController = require('../controllers/authController');
 const profileController = require('../controllers/profileController');
+const deviceTokenController = require('../controllers/deviceTokenController');
+const upload = require('../middleware/upload');
 const profileStatsController = require('../controllers/profileStatsController');
 const preferredDestinationController = require('../controllers/preferredDestinationController');
 const travelAvailabilityController = require('../controllers/travelAvailabilityController');
@@ -31,9 +33,28 @@ router.get('/auth/me', authenticate, authController.me);
 
 // Profile
 router.get('/profile', authenticate, profileController.show);
+router.put('/profile', authenticate, profileController.update);
+router.put('/profile/interests', authenticate, profileController.updateInterests);
+router.post('/profile/photo', authenticate, upload.single('photo'), profileController.uploadPhoto);
+router.delete('/profile/photo', authenticate, profileController.deletePhoto);
+
 router.get('/profile/stats', authenticate, profileStatsController.show);
+
+// Device Tokens
+router.post('/profile/device-token', authenticate, deviceTokenController.registerDeviceToken);
+router.delete('/profile/device-token', authenticate, deviceTokenController.unregisterDeviceToken);
+
+// Profile Destinations
 router.get('/profile/destinations', authenticate, preferredDestinationController.index);
+router.post('/profile/destinations', authenticate, preferredDestinationController.store);
+router.put('/profile/destinations/:id', authenticate, preferredDestinationController.update);
+router.delete('/profile/destinations/:id', authenticate, preferredDestinationController.destroy);
+
+// Profile Availability
 router.get('/profile/availability', authenticate, travelAvailabilityController.index);
+router.post('/profile/availability', authenticate, travelAvailabilityController.store);
+router.put('/profile/availability/:id', authenticate, travelAvailabilityController.update);
+router.delete('/profile/availability/:id', authenticate, travelAvailabilityController.destroy);
 
 // Trips
 router.get('/trips', authenticate, tripController.index);
