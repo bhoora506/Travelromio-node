@@ -229,8 +229,193 @@ async function sent(req, res) {
   }
 }
 
+/**
+ * POST /api/connections
+ * Send a connection request to another user.
+ */
+async function store(req, res) {
+  try {
+    const authId = req.user.id;
+    const { recipient_id } = req.body;
+
+    if (!recipient_id) {
+      return res.status(422).json({
+        message: 'The given data was invalid.',
+        errors: { recipient_id: ['The recipient id field is required.'] }
+      });
+    }
+
+    const recipientNum = parseInt(recipient_id, 10);
+    if (isNaN(recipientNum)) {
+      return res.status(422).json({
+        message: 'The given data was invalid.',
+        errors: { recipient_id: ['The recipient id must be an integer.'] }
+      });
+    }
+
+    const existingRecipient = await prisma.users.findUnique({ where: { id: BigInt(recipientNum) } });
+    if (!existingRecipient) {
+      return res.status(422).json({
+        message: 'The given data was invalid.',
+        errors: { recipient_id: ['The selected recipient id is invalid.'] }
+      });
+    }
+
+    const connectionRequestService = require('../services/connectionRequestService');
+    const created = await connectionRequestService.sendRequest(authId, recipientNum);
+
+    const loaded = await prisma.connection_requests.findUnique({
+      where: { id: created.id },
+      include: {
+        users_connection_requests_requester_idTousers: { include: { user_profiles: true } },
+        users_connection_requests_recipient_idTousers: { include: { user_profiles: true } }
+      }
+    });
+
+    return successResponse(
+      res,
+      { connection_request: connectionRequestResource.toResource(loaded) },
+      'Connection request sent successfully.',
+      201
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[ConnectionRequestController.store] Error:', err);
+    return errorResponse(res, 'An error occurred while sending connection request', [], 500);
+  }
+}
+
+/**
+ * POST /api/connections/:connectionRequestId/accept
+ * Accept a pending connection request (recipient only).
+ */
+async function accept(req, res) {
+  try {
+    const authId = req.user.id;
+    const reqId = BigInt(req.params.connectionRequestId);
+
+    const connectionRepository = require('../repositories/connectionRepository');
+    const requestRecord = await connectionRepository.findById(reqId);
+
+    if (!requestRecord) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    const connectionRequestService = require('../services/connectionRequestService');
+    const accepted = await connectionRequestService.accept(requestRecord, authId);
+
+    const loaded = await prisma.connection_requests.findUnique({
+      where: { id: accepted.id },
+      include: {
+        users_connection_requests_requester_idTousers: { include: { user_profiles: true } },
+        users_connection_requests_recipient_idTousers: { include: { user_profiles: true } }
+      }
+    });
+
+    return successResponse(
+      res,
+      { connection_request: connectionRequestResource.toResource(loaded) },
+      'Connection request accepted.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[ConnectionRequestController.accept] Error:', err);
+    return errorResponse(res, 'An error occurred while accepting connection request', [], 500);
+  }
+}
+
+/**
+ * POST /api/connections/:connectionRequestId/reject
+ * Reject a pending connection request (recipient only).
+ */
+async function reject(req, res) {
+  try {
+    const authId = req.user.id;
+    const reqId = BigInt(req.params.connectionRequestId);
+
+    const connectionRepository = require('../repositories/connectionRepository');
+    const requestRecord = await connectionRepository.findById(reqId);
+
+    if (!requestRecord) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    const connectionRequestService = require('../services/connectionRequestService');
+    const rejected = await connectionRequestService.reject(requestRecord, authId);
+
+    const loaded = await prisma.connection_requests.findUnique({
+      where: { id: rejected.id },
+      include: {
+        users_connection_requests_requester_idTousers: { include: { user_profiles: true } },
+        users_connection_requests_recipient_idTousers: { include: { user_profiles: true } }
+      }
+    });
+
+    return successResponse(
+      res,
+      { connection_request: connectionRequestResource.toResource(loaded) },
+      'Connection request rejected.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[ConnectionRequestController.reject] Error:', err);
+    return errorResponse(res, 'An error occurred while rejecting connection request', [], 500);
+  }
+}
+
+/**
+ * POST /api/connections/:connectionRequestId/cancel
+ * Cancel a pending connection request (requester only).
+ */
+async function cancel(req, res) {
+  try {
+    const authId = req.user.id;
+    const reqId = BigInt(req.params.connectionRequestId);
+
+    const connectionRepository = require('../repositories/connectionRepository');
+    const requestRecord = await connectionRepository.findById(reqId);
+
+    if (!requestRecord) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    const connectionRequestService = require('../services/connectionRequestService');
+    const cancelled = await connectionRequestService.cancel(requestRecord, authId);
+
+    const loaded = await prisma.connection_requests.findUnique({
+      where: { id: cancelled.id },
+      include: {
+        users_connection_requests_requester_idTousers: { include: { user_profiles: true } },
+        users_connection_requests_recipient_idTousers: { include: { user_profiles: true } }
+      }
+    });
+
+    return successResponse(
+      res,
+      { connection_request: connectionRequestResource.toResource(loaded) },
+      'Connection request cancelled.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[ConnectionRequestController.cancel] Error:', err);
+    return errorResponse(res, 'An error occurred while cancelling connection request', [], 500);
+  }
+}
+
 module.exports = {
   index,
   received,
-  sent
+  sent,
+  store,
+  accept,
+  reject,
+  cancel
 };

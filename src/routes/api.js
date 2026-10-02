@@ -70,6 +70,10 @@ router.get('/companions', authenticate, companionDiscoveryController.index);
 router.get('/connections', authenticate, connectionRequestController.index);
 router.get('/connections/received', authenticate, connectionRequestController.received);
 router.get('/connections/sent', authenticate, connectionRequestController.sent);
+router.post('/connections', authenticate, connectionRequestController.store);
+router.post('/connections/:connectionRequestId/accept', authenticate, connectionRequestController.accept);
+router.post('/connections/:connectionRequestId/reject', authenticate, connectionRequestController.reject);
+router.post('/connections/:connectionRequestId/cancel', authenticate, connectionRequestController.cancel);
 
 // Conversations
 router.get('/conversations', authenticate, conversationController.index);

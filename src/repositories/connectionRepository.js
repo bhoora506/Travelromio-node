@@ -153,6 +153,25 @@ async function findPendingOrAcceptedBetweenUsers(userAId, userBId, client) {
 }
 
 /**
+ * findByIdForUpdate(id, client)
+ *
+ * Pessimistic lock for connection request. Must be run inside a transaction client (tx).
+ *
+ * @param {BigInt|string|number} id
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object|null>}
+ */
+async function findByIdForUpdate(id, client) {
+  const db = client || prisma;
+  try {
+    const result = await db.$queryRaw`SELECT * FROM connection_requests WHERE id = ${BigInt(id)} FOR UPDATE`;
+    return result.length > 0 ? result[0] : null;
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
  * create(data, client?)
  *
  * @param {object} data  { requester_id, recipient_id }
@@ -190,6 +209,7 @@ async function updateStatus(id, status, client) {
 
 module.exports = {
   findById,
+  findByIdForUpdate,
   findByRequester,
   findByRecipient,
   findBetweenUsers,
