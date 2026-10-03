@@ -21,6 +21,7 @@ const travelAvailabilityController = require('../controllers/travelAvailabilityC
 const interestController = require('../controllers/interestController');
 const tripController = require('../controllers/tripController');
 const tripMemberController = require('../controllers/tripMemberController');
+const tripJoinRequestController = require('../controllers/tripJoinRequestController');
 const companionDiscoveryController = require('../controllers/companionDiscoveryController');
 const connectionRequestController = require('../controllers/connectionRequestController');
 const conversationController = require('../controllers/conversationController');
@@ -75,6 +76,13 @@ router.post('/trips/:tripId', authenticate, uploadTrip.single('image'), (req, re
 });
 router.post('/trips/:tripId/publish', authenticate, tripController.publish);
 router.post('/trips/:tripId/cancel', authenticate, tripController.cancel);
+
+// N3-K Join Requests
+router.post('/trips/:tripId/join-requests', authenticate, tripJoinRequestController.store);
+router.get('/trips/:tripId/join-requests', authenticate, tripJoinRequestController.index);
+router.post('/trips/:tripId/join-requests/:joinRequestId/approve', authenticate, tripJoinRequestController.approve);
+router.post('/trips/:tripId/join-requests/:joinRequestId/reject', authenticate, tripJoinRequestController.reject);
+router.post('/trips/:tripId/join-requests/:joinRequestId/cancel', authenticate, tripJoinRequestController.cancel);
 
 // Companions
 router.get('/companions', authenticate, companionDiscoveryController.index);

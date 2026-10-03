@@ -42,6 +42,25 @@ async function findById(id, client) {
 }
 
 /**
+ * findByIdWithRequester(id, client?)
+ *
+ * @param {BigInt|string|number} id
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object|null>}
+ */
+async function findByIdWithRequester(id, client) {
+  const db = client || prisma;
+  try {
+    return await db.trip_join_requests.findUnique({
+      where: { id: BigInt(id) },
+      include: { users: true },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
  * findByTripId(tripId, client?)
  *
  * Returns all join requests for a trip.
@@ -55,6 +74,28 @@ async function findByTripId(tripId, client) {
   try {
     return await db.trip_join_requests.findMany({
       where: { trip_id: BigInt(tripId) },
+      orderBy: { created_at: 'desc' },
+    });
+  } catch (err) {
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * findByTripIdWithRequester(tripId, client?)
+ *
+ * Returns all join requests for a trip, eagerly loading the requester.
+ *
+ * @param {BigInt|string|number} tripId
+ * @param {PrismaClient} [client]
+ * @returns {Promise<object[]>}
+ */
+async function findByTripIdWithRequester(tripId, client) {
+  const db = client || prisma;
+  try {
+    return await db.trip_join_requests.findMany({
+      where: { trip_id: BigInt(tripId) },
+      include: { users: true },
       orderBy: { created_at: 'desc' },
     });
   } catch (err) {
@@ -147,7 +188,9 @@ async function updateStatus(id, status, client) {
 
 module.exports = {
   findById,
+  findByIdWithRequester,
   findByTripId,
+  findByTripIdWithRequester,
   findByUserId,
   findPendingByTripAndUser,
   create,
