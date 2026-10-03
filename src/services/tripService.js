@@ -527,6 +527,9 @@ class TripService {
       if (data.title !== undefined) updateData.title = data.title;
       if (data.description !== undefined) updateData.description = data.description || null;
       // Image changes are silently ignored for ongoing trips (matches Laravel)
+      if (file) {
+        safeDeleteFile(`trips/${file.filename}`);
+      }
       incomingFile = null;
     } else {
       // draft or published: all editable fields

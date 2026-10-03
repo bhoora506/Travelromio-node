@@ -283,7 +283,6 @@ async function store(req, res) {
 
     const { errors, isValid } = tripService.validateCreatePayload(data, file);
     if (!isValid) {
-      // Clean up uploaded file on validation failure
       if (file && file.path) {
         const fs = require('fs');
         try { fs.unlinkSync(file.path); } catch (_) {}
@@ -348,11 +347,19 @@ async function update(req, res) {
 
     const trip = await tripRepository.findById(tripId);
     if (!trip) {
+      if (file && file.path) {
+        const fs = require('fs');
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
       return errorResponse(res, 'Not Found', [], 404);
     }
 
     // Authorization: owner only (mirrors TripPolicy::update)
     if (String(trip.user_id) !== String(authId)) {
+      if (file && file.path) {
+        const fs = require('fs');
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
       return errorResponse(res, 'This action is unauthorized.', [], 403);
     }
 
@@ -397,6 +404,10 @@ async function update(req, res) {
       'Trip updated successfully.'
     );
   } catch (err) {
+    if (req.file && req.file.path) {
+      const fs = require('fs');
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
     if (err.statusCode) {
       return errorResponse(res, err.message, [], err.statusCode);
     }

@@ -253,12 +253,17 @@ async function runTests() {
     if (res.statusCode !== 404) throw new Error(`Expected 404, got ${res.statusCode}`);
   });
 
-  await test('non-owner (IDOR) -> 403', async () => {
+  await test('non-owner (IDOR) -> 403, and file is cleaned up', async () => {
     setMockTrip(baseTripDraft);
-    const req = { user: anotherUser, params: { tripId: 1000 }, body: { title: 'Updated' }, file: null };
+    let unlinked = false;
+    const fakeFile = { path: 'fake/path.jpg' };
+    require('fs').unlinkSync = (path) => { if (path === 'fake/path.jpg') unlinked = true; };
+
+    const req = { user: anotherUser, params: { tripId: 1000 }, body: { title: 'Updated' }, file: fakeFile };
     const res = mockRes();
     await controller.update(req, res);
     if (res.statusCode !== 403) throw new Error(`Expected 403, got ${res.statusCode}`);
+    if (!unlinked) throw new Error('File was not cleaned up on 403 IDOR');
   });
 
   await test('completed trip -> 409', async () => {
@@ -278,11 +283,17 @@ async function runTests() {
     if (res.statusCode !== 409) throw new Error(`Expected 409, got ${res.statusCode}`);
   });
 
-  await test('ongoing trip: only title/description editable (other fields silently ignored)', async () => {
+  await test('ongoing trip: only title/description editable (other fields silently ignored, new image deleted)', async () => {
     setMockTrip(baseTripOngoing);
+    let unlinked = false;
+    const fakeFile = { filename: 'ignored.jpg', path: 'fake/ignored.jpg' };
+    const origExists = require('fs').existsSync;
+    require('fs').existsSync = () => true;
+    require('fs').unlinkSync = (path) => { if (path.includes('ignored.jpg')) unlinked = true; };
+
     tripRepository.update = async (id, data) => {
       // Only title and description should be in update data
-      const disallowedFields = ['destination', 'trip_type', 'max_members', 'start_date', 'end_date'];
+      const disallowedFields = ['destination', 'trip_type', 'max_members', 'start_date', 'end_date', 'image_path'];
       for (const f of disallowedFields) {
         if (data[f] !== undefined) throw new Error(`Field '${f}' should not be in update for ongoing trip`);
       }
@@ -291,11 +302,38 @@ async function runTests() {
     const req = {
       user: ownerUser, params: { tripId: 1000 },
       body: { title: 'New Title', destination: 'Ignored Dest', trip_type: 'beach', max_members: 10 },
-      file: null
+      file: fakeFile
     };
     const res = mockRes();
     await controller.update(req, res);
     if (res.statusCode !== 200) throw new Error(`Expected 200, got ${res.statusCode}`);
+    if (!unlinked) throw new Error('Ignored file was not cleaned up');
+  });
+
+  await test('update with both remove_image=true and new image prioritizes new image and ignores remove_image', async () => {
+    const tripWithImage = { ...baseTripDraft, image_path: 'old.jpg' };
+    setMockTrip(tripWithImage);
+    let capturedUpdateData = null;
+    let oldUnlinked = false;
+    tripRepository.update = async (id, data) => {
+      capturedUpdateData = data;
+      return { ...tripWithImage, ...data }; 
+    };
+    require('fs').existsSync = () => true;
+    require('fs').unlinkSync = (path) => { if (path.includes('old.jpg')) oldUnlinked = true; };
+
+    const req = {
+      user: ownerUser, params: { tripId: 1000 },
+      body: { remove_image: 'true' },
+      file: { filename: 'newfile.jpg', path: 'fake/newfile.jpg' }
+    };
+    const res = mockRes();
+    await controller.update(req, res);
+    if (res.statusCode !== 200) throw new Error(`Expected 200, got ${res.statusCode}`);
+    if (capturedUpdateData.image_path !== 'trips/newfile.jpg') throw new Error('New image should be prioritized');
+    // We mocked repository.update to return a trip with image_path='old.jpg', so we expect the service to try and delete it
+    // Wait, the update() returns updatedTrip, the old image is on the original trip object fetched via findById
+    if (!oldUnlinked) throw new Error('Old image should be unlinked');
   });
 
   await test('draft/published: all editable fields pass through', async () => {
