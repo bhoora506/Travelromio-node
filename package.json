@@ -20,7 +20,10 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:endpoints:n3h": "node scripts/test-endpoints-n3h.js"
+    "test:endpoints:n3h": "node scripts/test-endpoints-n3h.js",
+    "test:endpoints:n3i": "node scripts/test-endpoints-n3i.js",
+    "test:endpoints:n3j": "node scripts/test-endpoints-n3j.js",
+    "verify:laravel-compatibility": "node scripts/verify-laravel-compatibility.js"
   },
   "keywords": [],
   "author": "",
