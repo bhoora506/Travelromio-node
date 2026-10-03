@@ -3,13 +3,17 @@
 /**
  * src/controllers/tripController.js
  *
- * Implements N3-C Trip reading/discovery endpoints.
+ * Implements N3-C Trip reading/discovery endpoints (index, show, myTrips, joinedTrips)
+ * and N3-J Trip management mutation endpoints (store, update, publish, cancel).
  */
 
 const { successResponse, errorResponse } = require('../utils/response');
 const tripRepository = require('../repositories/tripRepository');
 const tripDiscoveryService = require('../services/tripDiscoveryService');
 const tripResource = require('../resources/tripResource');
+const tripService = require('../services/tripService');
+const interestRepository = require('../repositories/interestRepository');
+const prisma = require('../config/database');
 const { normaliseError, NotFoundError } = require('../db/errors');
 
 /**
@@ -257,4 +261,224 @@ async function joinedTrips(req, res) {
   }
 }
 
-module.exports = { index, show, myTrips, joinedTrips };
+// ── N3-J: Trip mutation endpoints ─────────────────────────────────────────
+
+/**
+ * POST /api/trips
+ * Create a new trip. Owner membership and interests are created atomically.
+ *
+ * Accepts multipart/form-data (when image included) or JSON.
+ * Flutter sends multipart with '_method' not present on create.
+ */
+async function store(req, res) {
+  try {
+    const authId = req.user.id;
+    const data = req.body;
+    const file = req.file || null;
+
+    // Validate interest_ids if provided as bracket notation (multipart)
+    // Flutter sends: interest_ids[0]=1&interest_ids[1]=2
+    // Express/multer parses this into req.body.interest_ids as an array automatically
+    // when we use extended: true in bodyParser.
+
+    const { errors, isValid } = tripService.validateCreatePayload(data, file);
+    if (!isValid) {
+      // Clean up uploaded file on validation failure
+      if (file && file.path) {
+        const fs = require('fs');
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
+      return res.status(422).json({
+        message: 'The given data was invalid.',
+        errors
+      });
+    }
+
+    // Validate that interest IDs exist in DB
+    if (Array.isArray(data.interest_ids) && data.interest_ids.length > 0) {
+      for (const id of data.interest_ids) {
+        const interest = await interestRepository.findById(parseInt(id, 10));
+        if (!interest) {
+          if (file && file.path) {
+            const fs = require('fs');
+            try { fs.unlinkSync(file.path); } catch (_) {}
+          }
+          return res.status(422).json({
+            message: 'The given data was invalid.',
+            errors: { 'interest_ids.*': ['The selected interest ids is invalid.'] }
+          });
+        }
+      }
+    }
+
+    const trip = await tripService.createTrip(authId, data, file);
+
+    // Load relations for response (matches Laravel controller eager loads)
+    const tripWithRelations = await tripRepository.findByIdWithRelations(trip.id, authId);
+
+    return successResponse(
+      res,
+      { trip: tripResource.toResource(tripWithRelations, authId) },
+      'Trip created successfully.',
+      201
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[TripController.store] Error:', err);
+    return errorResponse(res, 'An error occurred while creating trip', [], 500);
+  }
+}
+
+/**
+ * PUT /api/trips/:tripId
+ * Update an existing trip (owner only, lifecycle-restricted).
+ *
+ * Flutter sends PUT for JSON-only updates.
+ * Flutter sends POST with _method=PUT for multipart (with image).
+ * We handle both via the route.
+ */
+async function update(req, res) {
+  try {
+    const authId = req.user.id;
+    const tripId = BigInt(req.params.tripId);
+    const data = req.body;
+    const file = req.file || null;
+
+    const trip = await tripRepository.findById(tripId);
+    if (!trip) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    // Authorization: owner only (mirrors TripPolicy::update)
+    if (String(trip.user_id) !== String(authId)) {
+      return errorResponse(res, 'This action is unauthorized.', [], 403);
+    }
+
+    // Validate payload
+    const { errors, isValid } = tripService.validateUpdatePayload(data);
+    if (!isValid) {
+      if (file && file.path) {
+        const fs = require('fs');
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
+      return res.status(422).json({
+        message: 'The given data was invalid.',
+        errors
+      });
+    }
+
+    // Validate interest_ids exist if provided
+    if (Array.isArray(data.interest_ids) && data.interest_ids.length > 0) {
+      for (const id of data.interest_ids) {
+        const interest = await interestRepository.findById(parseInt(id, 10));
+        if (!interest) {
+          if (file && file.path) {
+            const fs = require('fs');
+            try { fs.unlinkSync(file.path); } catch (_) {}
+          }
+          return res.status(422).json({
+            message: 'The given data was invalid.',
+            errors: { 'interest_ids.*': ['The selected interest ids is invalid.'] }
+          });
+        }
+      }
+    }
+
+    const updated = await tripService.updateTrip(trip, data, file);
+
+    // Load relations for response
+    const tripWithRelations = await tripRepository.findByIdWithRelations(updated.id, authId);
+
+    return successResponse(
+      res,
+      { trip: tripResource.toResource(tripWithRelations, authId) },
+      'Trip updated successfully.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[TripController.update] Error:', err);
+    return errorResponse(res, 'An error occurred while updating trip', [], 500);
+  }
+}
+
+/**
+ * POST /api/trips/:tripId/publish
+ * Publish a draft trip (owner only).
+ */
+async function publish(req, res) {
+  try {
+    const authId = req.user.id;
+    const tripId = BigInt(req.params.tripId);
+
+    const trip = await tripRepository.findById(tripId);
+    if (!trip) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    // Authorization: owner only (mirrors TripPolicy::publish)
+    if (String(trip.user_id) !== String(authId)) {
+      return errorResponse(res, 'This action is unauthorized.', [], 403);
+    }
+
+    const published = await tripService.publishTrip(trip);
+
+    // Load relations for response
+    const tripWithRelations = await tripRepository.findByIdWithRelations(published.id, authId);
+
+    return successResponse(
+      res,
+      { trip: tripResource.toResource(tripWithRelations, authId) },
+      'Trip published successfully.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[TripController.publish] Error:', err);
+    return errorResponse(res, 'An error occurred while publishing trip', [], 500);
+  }
+}
+
+/**
+ * POST /api/trips/:tripId/cancel
+ * Cancel a trip from any non-terminal state (owner only).
+ */
+async function cancel(req, res) {
+  try {
+    const authId = req.user.id;
+    const tripId = BigInt(req.params.tripId);
+
+    const trip = await tripRepository.findById(tripId);
+    if (!trip) {
+      return errorResponse(res, 'Not Found', [], 404);
+    }
+
+    // Authorization: owner only (mirrors TripPolicy::cancel)
+    if (String(trip.user_id) !== String(authId)) {
+      return errorResponse(res, 'This action is unauthorized.', [], 403);
+    }
+
+    const cancelled = await tripService.cancelTrip(trip);
+
+    // Load relations for response
+    const tripWithRelations = await tripRepository.findByIdWithRelations(cancelled.id, authId);
+
+    return successResponse(
+      res,
+      { trip: tripResource.toResource(tripWithRelations, authId) },
+      'Trip cancelled successfully.'
+    );
+  } catch (err) {
+    if (err.statusCode) {
+      return errorResponse(res, err.message, [], err.statusCode);
+    }
+    console.error('[TripController.cancel] Error:', err);
+    return errorResponse(res, 'An error occurred while cancelling trip', [], 500);
+  }
+}
+
+module.exports = { index, show, myTrips, joinedTrips, store, update, publish, cancel };

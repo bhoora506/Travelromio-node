@@ -14,6 +14,7 @@ const authController = require('../controllers/authController');
 const profileController = require('../controllers/profileController');
 const deviceTokenController = require('../controllers/deviceTokenController');
 const upload = require('../middleware/upload');
+const uploadTrip = require('../middleware/uploadTrip');
 const profileStatsController = require('../controllers/profileStatsController');
 const preferredDestinationController = require('../controllers/preferredDestinationController');
 const travelAvailabilityController = require('../controllers/travelAvailabilityController');
@@ -56,12 +57,24 @@ router.post('/profile/availability', authenticate, travelAvailabilityController.
 router.put('/profile/availability/:id', authenticate, travelAvailabilityController.update);
 router.delete('/profile/availability/:id', authenticate, travelAvailabilityController.destroy);
 
-// Trips
+// Trips (N3-C reads + N3-J mutations)
 router.get('/trips', authenticate, tripController.index);
 router.get('/trips/:tripId', authenticate, tripController.show);
 router.get('/my/trips', authenticate, tripController.myTrips);
 router.get('/my/joined-trips', authenticate, tripController.joinedTrips);
 router.get('/trips/:tripId/members', authenticate, tripMemberController.index);
+// N3-J mutations
+router.post('/trips', authenticate, uploadTrip.single('image'), tripController.store);
+router.put('/trips/:tripId', authenticate, uploadTrip.single('image'), tripController.update);
+// Flutter sends POST with _method=PUT for multipart image updates
+router.post('/trips/:tripId', authenticate, uploadTrip.single('image'), (req, res, next) => {
+  if (req.body && (req.body._method === 'PUT' || req.body._method === 'put')) {
+    return tripController.update(req, res, next);
+  }
+  next();
+});
+router.post('/trips/:tripId/publish', authenticate, tripController.publish);
+router.post('/trips/:tripId/cancel', authenticate, tripController.cancel);
 
 // Companions
 router.get('/companions', authenticate, companionDiscoveryController.index);
